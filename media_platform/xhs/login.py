@@ -40,13 +40,11 @@ class XiaoHongShuLogin(AbstractLogin):
                  browser_context: BrowserContext,
                  context_page: Page,
                  login_phone: Optional[str] = "",
-                 cookie_str: str = ""
                  ):
         config.LOGIN_TYPE = login_type
         self.browser_context = browser_context
         self.context_page = context_page
         self.login_phone = login_phone
-        self.cookie_str = cookie_str
 
     @retry(stop=stop_after_attempt(600), wait=wait_fixed(1), retry=retry_if_result(lambda value: value is False))
     async def check_login_state(self, no_logged_in_session: str) -> bool:
@@ -91,10 +89,8 @@ class XiaoHongShuLogin(AbstractLogin):
             await self.login_by_qrcode()
         elif config.LOGIN_TYPE == "phone":
             await self.login_by_mobile()
-        elif config.LOGIN_TYPE == "cookie":
-            await self.login_by_cookies()
         else:
-            raise ValueError("[XiaoHongShuLogin.begin]I nvalid Login Type Currently only supported qrcode or phone or cookies ...")
+            raise ValueError("[XiaoHongShuLogin.begin] Invalid Login Type. Currently only supported: qrcode or phone ...")
 
     async def login_by_mobile(self):
         """Login xiaohongshu by mobile"""
@@ -209,16 +205,3 @@ class XiaoHongShuLogin(AbstractLogin):
         wait_redirect_seconds = 5
         utils.logger.info(f"[XiaoHongShuLogin.login_by_qrcode] Login successful then wait for {wait_redirect_seconds} seconds redirect ...")
         await asyncio.sleep(wait_redirect_seconds)
-
-    async def login_by_cookies(self):
-        """login xiaohongshu website by cookies"""
-        utils.logger.info("[XiaoHongShuLogin.login_by_cookies] Begin login xiaohongshu by cookie ...")
-        for key, value in utils.convert_str_cookie_to_dict(self.cookie_str).items():
-            if key != "web_session":  # Only set web_session cookie attribute
-                continue
-            await self.browser_context.add_cookies([{
-                'name': key,
-                'value': value,
-                'domain': ".rednote.com" if config.XHS_INTERNATIONAL else ".xiaohongshu.com",
-                'path': "/"
-            }])

@@ -104,7 +104,6 @@ class DouYinCrawler(AbstractCrawler):
                     login_phone="",  # you phone number
                     browser_context=self.browser_context,
                     context_page=self.context_page,
-                    cookie_str=config.COOKIES,
                 )
                 await login_obj.begin()
                 await self.dy_client.update_cookies(

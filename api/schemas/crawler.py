@@ -36,7 +36,6 @@ class LoginTypeEnum(str, Enum):
     """Login method"""
     QRCODE = "qrcode"
     PHONE = "phone"
-    COOKIE = "cookie"
 
 
 class CrawlerTypeEnum(str, Enum):
@@ -71,7 +70,6 @@ class CrawlerStartRequest(BaseModel):
     enable_comments: bool = True
     enable_sub_comments: bool = False
     save_option: SaveDataOptionEnum = SaveDataOptionEnum.JSONL
-    cookies: str = ""
     headless: bool = False
     max_comments_count_singlenotes: int = 100
 

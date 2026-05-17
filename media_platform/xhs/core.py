@@ -104,7 +104,6 @@ class XiaoHongShuCrawler(AbstractCrawler):
                     login_phone="",  # input your phone number
                     browser_context=self.browser_context,
                     context_page=self.context_page,
-                    cookie_str=config.COOKIES,
                 )
                 await login_obj.begin()
                 await self.xhs_client.update_cookies(
@@ -210,7 +209,8 @@ class XiaoHongShuCrawler(AbstractCrawler):
 
             # Use fixed crawling interval
             crawl_interval = config.CRAWLER_MAX_SLEEP_SEC
-            # Get all note information of the creator
+
+            # Try API first, fall back to Playwright DOM extraction if note_ids are empty
             all_notes_list = await self.xhs_client.get_all_notes_by_creator(
                 user_id=user_id,
                 crawl_interval=crawl_interval,
@@ -219,14 +219,35 @@ class XiaoHongShuCrawler(AbstractCrawler):
                 xsec_source=creator_info.xsec_source,
             )
 
-            note_ids = []
-            xsec_tokens = []
+            # Collect note_ids and xsec_tokens for comment fetching
+            note_items = []
             for note_item in all_notes_list:
                 nid = note_item.get("note_id")
                 if not nid:
                     continue
-                note_ids.append(nid)
-                xsec_tokens.append(note_item.get("xsec_token", ""))
+                note_items.append({
+                    "note_id": nid,
+                    "xsec_token": note_item.get("xsec_token", ""),
+                    "xsec_source": creator_info.xsec_source,
+                })
+
+            # If API returned empty note_ids, extract from rendered profile page via Playwright
+            if not note_items:
+                utils.logger.info(
+                    f"[get_creators_and_notes] API returned no note IDs for user {user_id}, "
+                    f"falling back to Playwright DOM extraction"
+                )
+                note_items = await self.get_note_ids_from_profile_page(
+                    user_id=user_id,
+                    xsec_token=creator_info.xsec_token,
+                    xsec_source=creator_info.xsec_source,
+                )
+                if note_items:
+                    # Fetch note details via feed API using extracted IDs
+                    await self.fetch_creator_notes_detail(note_items)
+
+            note_ids = [item["note_id"] for item in note_items]
+            xsec_tokens = [item["xsec_token"] for item in note_items]
             await self.batch_get_note_comments(note_ids, xsec_tokens)
 
     async def fetch_creator_notes_detail(self, note_list: List[Dict]):
@@ -315,7 +336,8 @@ class XiaoHongShuCrawler(AbstractCrawler):
                     note_detail = await self.xhs_client.get_note_by_id_from_html(note_id, xsec_source, xsec_token,
                                                                                  enable_cookie=True)
                     if not note_detail:
-                        raise Exception(f"[get_note_detail_async_task] Failed to get note detail, Id: {note_id}")
+                        utils.logger.warning(f"[get_note_detail_async_task] Failed to get note detail, Id: {note_id}")
+                        return None
 
                 note_detail.update({"xsec_token": xsec_token, "xsec_source": xsec_source})
 
@@ -334,6 +356,50 @@ class XiaoHongShuCrawler(AbstractCrawler):
             except KeyError as ex:
                 utils.logger.error(f"[XiaoHongShuCrawler.get_note_detail_async_task] have not fund note detail note_id:{note_id}, err: {ex}")
                 return None
+
+    async def get_note_ids_from_profile_page(self, user_id: str, xsec_token: str, xsec_source: str) -> List[Dict]:
+        """Load creator profile page via Playwright and extract note links from rendered DOM.
+
+        XHS no longer returns note_id in SSR HTML or user_posted API — IDs only appear
+        after client-side JS renders the note cards. This method navigates the browser
+        to the profile page and extracts note IDs from the <a href> attributes.
+        """
+        profile_url = f"{self.xhs_client._domain}/user/profile/{user_id}"
+        if xsec_token and xsec_source:
+            profile_url += f"?xsec_token={xsec_token}&xsec_source={xsec_source}"
+
+        page = await self.browser_context.new_page()
+        try:
+            await page.goto(profile_url, wait_until="networkidle", timeout=30000)
+            await asyncio.sleep(2)
+
+            # Extract note card links: <a href="/explore/{note_id}?xsec_token=...&xsec_source=...">
+            note_links = await page.evaluate("""() => {
+                const links = document.querySelectorAll('a[href*="/explore/"]');
+                return Array.from(links).map(a => a.href).filter(h => h.includes('/explore/'));
+            }""")
+
+            if not note_links:
+                utils.logger.warning(f"[get_note_ids_from_profile_page] No note links found for user {user_id}")
+                return []
+
+            result = []
+            for link_url in note_links:
+                note_info = parse_note_info_from_note_url(link_url)
+                if note_info.note_id:
+                    result.append({
+                        "note_id": note_info.note_id,
+                        "xsec_token": note_info.xsec_token or xsec_token,
+                        "xsec_source": note_info.xsec_source or "pc_user_home",
+                    })
+
+            utils.logger.info(f"[get_note_ids_from_profile_page] Extracted {len(result)} note IDs for user {user_id}")
+            return result
+        except Exception as e:
+            utils.logger.error(f"[get_note_ids_from_profile_page] Error: {e}")
+            return []
+        finally:
+            await page.close()
 
     async def batch_get_note_comments(self, note_list: List[str], xsec_tokens: List[str]):
         """Batch get note comments"""

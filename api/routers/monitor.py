@@ -658,10 +658,9 @@ async def trigger_crawl(
     platform: Optional[str] = Query(default=None),
     account_id: Optional[int] = Query(default=None),
     login_type: str = Query(default="qrcode"),
-    cookies: str = Query(default=""),
     user: MonitorUser = Depends(get_current_user),
 ):
-    """Start account crawl with QR code or cookie login."""
+    """Start account crawl with QR code login."""
     from ..schemas.crawler import CrawlerStartRequest, CrawlerTypeEnum, LoginTypeEnum, PlatformEnum
     from ..services.crawler_manager import crawler_manager
 
@@ -669,11 +668,8 @@ async def trigger_crawl(
         raise HTTPException(status_code=409, detail="Crawler is already running, please wait")
 
     lt = login_type.strip().lower()
-    if lt not in ("qrcode", "cookie"):
+    if lt not in ("qrcode",):
         lt = "qrcode"
-    cookie_str = (cookies or "").strip()
-    if lt == "cookie" and not cookie_str:
-        raise HTTPException(status_code=400, detail="Cookie 登录需要填写 cookie")
 
     async with _get_session() as session:
         if account_id:
@@ -712,16 +708,12 @@ async def trigger_crawl(
         enable_sub_comments=False,
         max_comments_count_singlenotes=0,
         save_option=_monitor_save_option(),
-        cookies=cookie_str,
         headless=False,
     )
     started = await crawler_manager.start(config)
     if not started:
         raise HTTPException(status_code=500, detail="Failed to start crawler")
-    if lt == "cookie":
-        message = "Cookie 登录采集已启动，等待采集完成"
-    else:
-        message = "浏览器已启动，请扫码登录后等待采集完成"
+    message = "浏览器已启动，请扫码登录后等待采集完成"
     if account_id:
         message = f"单账号采集已启动：{accounts[0].display_name or accounts[0].creator_id}"
     return {"status": "started", "message": message, "creator_ids": creator_ids, "account_id": account_id}
@@ -734,7 +726,6 @@ async def trigger_video_crawl(
     max_comments: int = Query(default=2000, ge=0, le=10000),
     include_sub_comments: bool = Query(default=False),
     login_type: str = Query(default="qrcode"),
-    cookies: str = Query(default=""),
     user: MonitorUser = Depends(get_current_user),
 ):
     """Start a single video/post detail crawl and save it to the configured monitor database."""
@@ -750,11 +741,8 @@ async def trigger_video_crawl(
         raise HTTPException(status_code=409, detail="Crawler is already running, please wait")
 
     lt = login_type.strip().lower()
-    if lt not in ("qrcode", "cookie"):
+    if lt not in ("qrcode",):
         lt = "qrcode"
-    cookie_str = (cookies or "").strip()
-    if lt == "cookie" and not cookie_str:
-        raise HTTPException(status_code=400, detail="Cookie 登录需要填写 cookie")
 
     config = CrawlerStartRequest(
         platform=PlatformEnum(platform),
@@ -765,14 +753,12 @@ async def trigger_video_crawl(
         enable_sub_comments=include_sub_comments,
         max_comments_count_singlenotes=max_comments,
         save_option=_monitor_save_option(),
-        cookies=cookie_str,
         headless=False,
     )
     started = await crawler_manager.start(config)
     if not started:
         raise HTTPException(status_code=500, detail="Failed to start crawler")
-    msg = "Cookie 登录采集已启动，等待完成" if lt == "cookie" else "单个作品采集已启动，请扫码登录后等待完成"
-    return {"status": "started", "message": msg, "video_id": video_id}
+    return {"status": "started", "message": "单个作品采集已启动，请扫码登录后等待完成", "video_id": video_id}
 
 
 # ---- Dashboard ----

@@ -180,7 +180,6 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
     </select>
     <select id="loginType" aria-label="登录方式">
       <option value="qrcode">扫码登录</option>
-      <option value="cookie">Cookie 登录</option>
     </select>
     <button type="button" class="btn primary" id="triggerBtn" data-action="trigger-crawl">立即采集</button>
     <button type="button" class="btn danger" id="stopBtn" data-action="stop-crawl" style="display:none">终止采集</button>
@@ -198,12 +197,6 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   <div class="notice-card">
     <strong>采集前请关闭 VPN 或代理。</strong>
     本工具需要使用运行服务的服务器网络直连抖音、小红书、B 站。开启 VPN、代理或网络加速器时，平台更容易出现登录过期、安全校验、412 拒绝访问、作品数量不完整等问题。
-  </div>
-
-  <div class="card" id="cookieCard" style="display:none">
-    <h3>Cookie 登录</h3>
-    <p style="color:var(--text2);font-size:13px;margin-bottom:10px">从浏览器开发者工具中复制 Cookie 字符串（格式：<code>key1=val1; key2=val2</code>），粘贴到下方。Cookie 仅在本次采集使用，不会保存到服务器。</p>
-    <textarea id="cookieInput" rows="4" placeholder="粘贴浏览器 Cookie..." style="width:100%;resize:vertical;font-family:monospace;font-size:13px"></textarea>
   </div>
 
   <div class="tab-content active" id="tab-accounts">
@@ -921,16 +914,7 @@ async function toggleVideos(accountId, button) {
 
 function getLoginParams() {
   const lt = document.getElementById('loginType').value;
-  const params = { login_type: lt };
-  if (lt === 'cookie') {
-    const cookies = (document.getElementById('cookieInput').value || '').trim();
-    if (!cookies) {
-      showMsg('Cookie 登录需要填写 Cookie', 'error');
-      return null;
-    }
-    params.cookies = cookies;
-  }
-  return params;
+  return { login_type: lt };
 }
 
 async function triggerCrawl(accountId = '', sourceButton = null) {
@@ -1244,9 +1228,6 @@ function bindActions() {
   document.addEventListener('change', event => {
     const toggle = event.target.closest('[data-action="toggle-account"]');
     if (toggle) toggleAccount(toggle.dataset.accountId, toggle.checked);
-    if (event.target.id === 'loginType') {
-      document.getElementById('cookieCard').style.display = event.target.value === 'cookie' ? '' : 'none';
-    }
   });
 
   document.getElementById('singleVideoId').addEventListener('keydown', event => {

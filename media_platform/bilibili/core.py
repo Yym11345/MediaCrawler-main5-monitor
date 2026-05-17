@@ -103,7 +103,6 @@ class BilibiliCrawler(AbstractCrawler):
                     login_phone="",  # your phone number
                     browser_context=self.browser_context,
                     context_page=self.context_page,
-                    cookie_str=config.COOKIES,
                 )
                 await login_obj.begin()
                 await self.bili_client.update_cookies(

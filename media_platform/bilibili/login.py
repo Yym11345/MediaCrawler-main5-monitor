@@ -42,13 +42,11 @@ class BilibiliLogin(AbstractLogin):
                  browser_context: BrowserContext,
                  context_page: Page,
                  login_phone: Optional[str] = "",
-                 cookie_str: str = ""
                  ):
         config.LOGIN_TYPE = login_type
         self.browser_context = browser_context
         self.context_page = context_page
         self.login_phone = login_phone
-        self.cookie_str = cookie_str
 
     async def begin(self):
         """Start login bilibili"""
@@ -57,11 +55,9 @@ class BilibiliLogin(AbstractLogin):
             await self.login_by_qrcode()
         elif config.LOGIN_TYPE == "phone":
             await self.login_by_mobile()
-        elif config.LOGIN_TYPE == "cookie":
-            await self.login_by_cookies()
         else:
             raise ValueError(
-                "[BilibiliLogin.begin] Invalid Login Type Currently only supported qrcode or phone or cookie ...")
+                "[BilibiliLogin.begin] Invalid Login Type. Currently only supported: qrcode or phone ...")
 
     @retry(stop=stop_after_attempt(600), wait=wait_fixed(1), retry=retry_if_result(lambda value: value is False))
     async def check_login_state(self) -> bool:
@@ -199,13 +195,3 @@ class BilibiliLogin(AbstractLogin):
 
     async def login_by_mobile(self):
         pass
-
-    async def login_by_cookies(self):
-        utils.logger.info("[BilibiliLogin.login_by_qrcode] Begin login bilibili by cookie ...")
-        for key, value in utils.convert_str_cookie_to_dict(self.cookie_str).items():
-            await self.browser_context.add_cookies([{
-                'name': key,
-                'value': value,
-                'domain': ".bilibili.com",
-                'path': "/"
-            }])

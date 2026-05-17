@@ -111,7 +111,6 @@ class ZhihuCrawler(AbstractCrawler):
                     login_phone="",  # input your phone number
                     browser_context=self.browser_context,
                     context_page=self.context_page,
-                    cookie_str=config.COOKIES,
                 )
                 await login_obj.begin()
                 await self.zhihu_client.update_cookies(

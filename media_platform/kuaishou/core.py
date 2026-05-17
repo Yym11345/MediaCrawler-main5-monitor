@@ -104,7 +104,6 @@ class KuaishouCrawler(AbstractCrawler):
                     login_phone=httpx_proxy_format,
                     browser_context=self.browser_context,
                     context_page=self.context_page,
-                    cookie_str=config.COOKIES,
                 )
                 await login_obj.begin()
                 await self.ks_client.update_cookies(

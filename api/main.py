@@ -26,20 +26,15 @@ import os
 import subprocess
 import uvicorn
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 
-from .routers import auth_router, crawler_router, data_router, websocket_router, monitor_router
+from .routers import auth_router, crawler_router, websocket_router, monitor_router
 
 app = FastAPI(
     title="MediaCrawler Monitor API",
     description="API for the MediaCrawler Monitor dashboard",
     version="1.0.0"
 )
-
-# Get webui static files directory
-WEBUI_DIR = os.path.join(os.path.dirname(__file__), "webui")
 
 
 def resolve_uvicorn_bind() -> tuple[str, int]:
@@ -51,40 +46,17 @@ def resolve_uvicorn_bind() -> tuple[str, int]:
         port = 8080
     return host, port
 
-# CORS configuration - allow frontend dev server access
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",  # Vite dev server
-        "http://localhost:3000",  # Backup port
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:3000",
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 # Register routers
 app.include_router(crawler_router, prefix="/api")
-app.include_router(data_router, prefix="/api")
 app.include_router(websocket_router, prefix="/api")
 app.include_router(monitor_router, prefix="/api")
 app.include_router(auth_router, prefix="/api")
 
 
 @app.get("/")
-async def serve_frontend():
-    """Return frontend page"""
-    index_path = os.path.join(WEBUI_DIR, "index.html")
-    if os.path.exists(index_path):
-        return FileResponse(index_path)
-    return {
-        "message": "MediaCrawler Monitor API",
-        "version": "1.0.0",
-        "docs": "/docs",
-        "note": "Monitor page is available at /monitor"
-    }
+async def serve_root():
+    """Redirect root to monitor dashboard"""
+    return RedirectResponse(url="/monitor")
 
 
 @app.get("/api/health")
@@ -169,16 +141,13 @@ async def check_environment():
 
 @app.get("/api/config/platforms")
 async def get_platforms():
-    """Get list of supported platforms"""
+    """Get list of supported monitor platforms"""
+    from .routers.monitor import MONITOR_PLATFORMS
+    platform_labels = {"dy": "Douyin", "xhs": "Xiaohongshu", "bili": "Bilibili"}
     return {
         "platforms": [
-            {"value": "xhs", "label": "Xiaohongshu", "icon": "book-open"},
-            {"value": "dy", "label": "Douyin", "icon": "music"},
-            {"value": "ks", "label": "Kuaishou", "icon": "video"},
-            {"value": "bili", "label": "Bilibili", "icon": "tv"},
-            {"value": "wb", "label": "Weibo", "icon": "message-circle"},
-            {"value": "tieba", "label": "Baidu Tieba", "icon": "messages-square"},
-            {"value": "zhihu", "label": "Zhihu", "icon": "help-circle"},
+            {"value": p, "label": platform_labels.get(p, p)}
+            for p in sorted(MONITOR_PLATFORMS)
         ]
     }
 
@@ -186,40 +155,13 @@ async def get_platforms():
 @app.get("/api/config/options")
 async def get_config_options():
     """Get all configuration options"""
+    from .schemas.crawler import LoginTypeEnum, CrawlerTypeEnum, SaveDataOptionEnum
     return {
-        "login_types": [
-            {"value": "qrcode", "label": "QR Code Login"},
-            {"value": "cookie", "label": "Cookie Login"},
-        ],
-        "crawler_types": [
-            {"value": "search", "label": "Search Mode"},
-            {"value": "detail", "label": "Detail Mode"},
-            {"value": "creator", "label": "Creator Mode"},
-        ],
-        "save_options": [
-            {"value": "jsonl", "label": "JSONL File"},
-            {"value": "json", "label": "JSON File"},
-            {"value": "csv", "label": "CSV File"},
-            {"value": "excel", "label": "Excel File"},
-            {"value": "sqlite", "label": "SQLite Database"},
-            {"value": "db", "label": "MySQL Database"},
-            {"value": "postgres", "label": "PostgreSQL Database"},
-            {"value": "mongodb", "label": "MongoDB Database"},
-        ],
+        "login_types": [{"value": e.value, "label": e.value} for e in LoginTypeEnum],
+        "crawler_types": [{"value": e.value, "label": e.value} for e in CrawlerTypeEnum],
+        "save_options": [{"value": e.value, "label": e.value} for e in SaveDataOptionEnum],
     }
 
-
-# Mount static resources - must be placed after all routes
-if os.path.exists(WEBUI_DIR):
-    assets_dir = os.path.join(WEBUI_DIR, "assets")
-    if os.path.exists(assets_dir):
-        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
-    # Mount logos directory
-    logos_dir = os.path.join(WEBUI_DIR, "logos")
-    if os.path.exists(logos_dir):
-        app.mount("/logos", StaticFiles(directory=logos_dir), name="logos")
-    # Mount other static files (e.g., vite.svg)
-    app.mount("/static", StaticFiles(directory=WEBUI_DIR), name="webui-static")
 
 
 if __name__ == "__main__":

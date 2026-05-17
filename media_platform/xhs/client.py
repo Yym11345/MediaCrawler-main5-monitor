@@ -24,6 +24,7 @@ from urllib.parse import quote, urlencode
 
 import httpx
 from playwright.async_api import BrowserContext, Page
+from playwright._impl._errors import TargetClosedError
 from tenacity import RetryError, retry, stop_after_attempt, wait_fixed, retry_if_not_exception_type
 from tools.httpx_util import make_async_client
 
@@ -652,6 +653,12 @@ class XiaoHongShuClient(AbstractApiClient, ProxyRefreshMixin):
                         notes_res = await self.get_notes_by_creator(
                             user_id, notes_cursor, xsec_token=xsec_token, xsec_source=xsec_source
                         )
+                    except TargetClosedError:
+                        utils.logger.warning(
+                            f"[XiaoHongShuClient.get_all_notes_by_creator] Browser context closed while "
+                            f"retrying user_id:{user_id}. Kept {len(result)} notes already collected."
+                        )
+                        break
                     except (DataFetchError, RetryError) as retry_exc:
                         raw_retry_exc = self._unwrap_retry_error(retry_exc)
                         utils.logger.warning(

@@ -53,7 +53,6 @@ class LoginTypeEnum(str, Enum):
 
     QRCODE = "qrcode"
     PHONE = "phone"
-    COOKIE = "cookie"
 
 
 class CrawlerTypeEnum(str, Enum):
@@ -154,7 +153,7 @@ async def parse_cmd(argv: Optional[Sequence[str]] = None):
             LoginTypeEnum,
             typer.Option(
                 "--lt",
-                help="Login type (qrcode=QR Code | phone=Phone | cookie=Cookie)",
+                help="Login type (qrcode=QR Code | phone=Phone)",
                 rich_help_panel="Account Configuration",
             ),
         ] = _coerce_enum(LoginTypeEnum, config.LOGIN_TYPE, LoginTypeEnum.QRCODE),
@@ -227,14 +226,6 @@ async def parse_cmd(argv: Optional[Sequence[str]] = None):
                 rich_help_panel="Storage Configuration",
             ),
         ] = None,
-        cookies: Annotated[
-            str,
-            typer.Option(
-                "--cookies",
-                help="Cookie value used for Cookie login method",
-                rich_help_panel="Account Configuration",
-            ),
-        ] = config.COOKIES,
         specified_id: Annotated[
             str,
             typer.Option(
@@ -324,7 +315,6 @@ async def parse_cmd(argv: Optional[Sequence[str]] = None):
         config.HEADLESS = enable_headless
         config.CDP_HEADLESS = enable_headless
         config.SAVE_DATA_OPTION = save_data_option.value
-        config.COOKIES = cookies
         config.CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES = max_comments_count_singlenotes
         config.MAX_CONCURRENCY_NUM = max_concurrency_num
         config.SAVE_DATA_PATH = save_data_path
@@ -368,7 +358,6 @@ async def parse_cmd(argv: Optional[Sequence[str]] = None):
             headless=config.HEADLESS,
             save_data_option=config.SAVE_DATA_OPTION,
             init_db=init_db_value,
-            cookies=config.COOKIES,
             specified_id=specified_id,
             creator_id=creator_id,
         )

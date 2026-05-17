@@ -50,9 +50,10 @@ class CrawlerManager:
         self._watchdog_task: Optional[asyncio.Task] = None
         self._finalized = False
         self._xhs_login_hint_pushed = False
+        self._saw_business_finished = False
         # Project root directory
         self._project_root = Path(__file__).parent.parent.parent
-        # Log queue - for pushing to WebSocket
+        # Log queue — for pushing to WebSocket
         self._log_queue: Optional[asyncio.Queue] = None
 
     @property
@@ -166,6 +167,7 @@ class CrawlerManager:
             self.status = "finishing"
             self.status_detail = "业务采集已完成，正在关闭浏览器和数据库连接"
             self.business_finished_at = datetime.now()
+            self._saw_business_finished = True
             self._create_log_entry(self.status_detail, "success")
 
         if (
@@ -229,6 +231,7 @@ class CrawlerManager:
                 self.current_config = config
                 self._finalized = False
                 self._xhs_login_hint_pushed = False
+                self._saw_business_finished = False
 
                 entry = self._create_log_entry(
                     f"Crawler started on platform: {config.platform.value}, type: {config.crawler_type.value}",
@@ -334,9 +337,6 @@ class CrawlerManager:
         cmd.extend(["--get_comment", "true" if config.enable_comments else "false"])
         cmd.extend(["--get_sub_comment", "true" if config.enable_sub_comments else "false"])
         cmd.extend(["--max_comments_count_singlenotes", str(config.max_comments_count_singlenotes)])
-
-        if config.cookies:
-            cmd.extend(["--cookies", config.cookies])
 
         cmd.extend(["--headless", "true" if config.headless else "false"])
 
@@ -452,9 +452,9 @@ class CrawlerManager:
         platform = self.current_config.platform.value
         account_id = self.current_config.monitor_account_id
         should_sync_monitor = self.current_config.crawler_type.value == "creator"
-        success = exit_code == 0 or self.business_finished_at is not None
+        business_done = self.business_finished_at is not None or self._saw_business_finished
 
-        if success:
+        if exit_code == 0 or business_done:
             entry = self._create_log_entry("Crawler completed successfully", "success")
             await self._push_log(entry)
             if should_sync_monitor and platform:
@@ -464,8 +464,17 @@ class CrawlerManager:
                 await self._push_log(entry)
                 await self._sync_monitor(platform, "success", account_id)
         else:
-            entry = self._create_log_entry(f"Crawler exited with code: {exit_code}", "warning")
+            # Non-zero exit code and no "Crawler finished" detected — report error
+            reason = self._summarize_exit_reason(exit_code)
+            entry = self._create_log_entry(f"Crawler exited with code: {exit_code} ({reason})", "warning")
             await self._push_log(entry)
+
+            # Show last few error-level log lines as context
+            error_context = self._collect_error_context()
+            for ctx_line in error_context:
+                ctx_entry = self._create_log_entry(f"  ↳ {ctx_line}", "error")
+                await self._push_log(ctx_entry)
+
             if should_sync_monitor and platform:
                 await self._sync_monitor(platform, "failed", account_id)
 
@@ -473,6 +482,34 @@ class CrawlerManager:
         self.status_detail = None
         self.business_finished_at = None
         self.current_config = None
+
+    @staticmethod
+    def _summarize_exit_reason(exit_code: int) -> str:
+        """Return a human-readable hint for common exit codes."""
+        if exit_code < 0:
+            return f"terminated by signal {-exit_code}"
+        if exit_code == 130:
+            return "interrupted (Ctrl+C / SIGINT)"
+        if exit_code == 137:
+            return "killed (SIGKILL, possibly OOM)"
+        if exit_code == 143:
+            return "terminated (SIGTERM)"
+        return "unhandled exception or process error"
+
+    def _collect_error_context(self) -> List[str]:
+        """Return the last few error/warning log lines for context."""
+        context_lines: List[str] = []
+        for entry in reversed(self._logs[-50:]):
+            if entry.level in ("error", "warning") and entry.message:
+                context_lines.insert(0, entry.message)
+                if len(context_lines) >= 5:
+                    break
+        # If no error-level lines found, return the last few log lines
+        if not context_lines:
+            for entry in self._logs[-5:]:
+                if entry.message:
+                    context_lines.append(entry.message)
+        return context_lines
 
     async def _terminate_process(
         self,

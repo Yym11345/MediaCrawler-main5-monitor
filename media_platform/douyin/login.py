@@ -41,35 +41,18 @@ class DouYinLogin(AbstractLogin):
                  browser_context: BrowserContext, # type: ignore
                  context_page: Page, # type: ignore
                  login_phone: Optional[str] = "",
-                 cookie_str: Optional[str] = ""
                  ):
         config.LOGIN_TYPE = login_type
         self.browser_context = browser_context
         self.context_page = context_page
         self.login_phone = login_phone
         self.scan_qrcode_time = 60
-        self.cookie_str = cookie_str
 
     async def begin(self):
         """
             Start login douyin website
-            The verification accuracy of the slider verification is not very good... If there are no special requirements, it is recommended not to use Douyin login, or use cookie login
+            The verification accuracy of the slider verification is not very good... If there are no special requirements, it is recommended not to use Douyin login
         """
-
-        # cookie login: skip popup dialog, inject cookies and go straight to checking
-        if config.LOGIN_TYPE == "cookie":
-            await self.login_by_cookies()
-            await asyncio.sleep(2)
-            utils.logger.info(f"[DouYinLogin.begin] Cookie login: checking login state ...")
-            try:
-                await self.check_login_state()
-            except RetryError:
-                utils.logger.info("[DouYinLogin.begin] Cookie login failed - cookies may be expired or incomplete. Please copy fresh cookies from a logged-in Douyin session.")
-                sys.exit()
-            wait_redirect_seconds = 5
-            utils.logger.info(f"[DouYinLogin.begin] Login successful then wait for {wait_redirect_seconds} seconds redirect ...")
-            await asyncio.sleep(wait_redirect_seconds)
-            return
 
         # popup login dialog (for qrcode and phone login)
         await self.popup_login_dialog()
@@ -272,13 +255,3 @@ class DouYinLogin(AbstractLogin):
             await self.context_page.mouse.move(x + track, 0, steps=move_step)
             x += track
         await self.context_page.mouse.up()
-
-    async def login_by_cookies(self):
-        utils.logger.info("[DouYinLogin.login_by_cookies] Begin login douyin by cookie ...")
-        for key, value in utils.convert_str_cookie_to_dict(self.cookie_str).items():
-            await self.browser_context.add_cookies([{
-                'name': key,
-                'value': value,
-                'domain': ".douyin.com",
-                'path': "/"
-            }])
